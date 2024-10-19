@@ -21,6 +21,8 @@ import PricingPage from "@/components/Pricing";
 const features = [
   {
     name: "Respuestas adaptadas a ti",
+
+    
     description: "El co-pilot analiza tu CV para personalizar las respuestas, alineándolas con tu experiencia y habilidades.",
     icon: BrainCogIcon,
   },
