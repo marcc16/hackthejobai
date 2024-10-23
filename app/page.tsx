@@ -211,8 +211,8 @@ export default function Home() {
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <h2 className="text-3xl font-bold text-center mb-12 text-gray-900">Lo que dicen nuestros usuarios</h2>
             <div className="relative">
-              <div className="absolute left-0 top-0 bottom-0 w-32 bg-gradient-to-r from-gray-50 to-transparent z-10"></div>
-              <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-gray-50 to-transparent z-10"></div>
+              <div className="absolute left-0 top-0 bottom-0 w-32 bg-gradient-to-r from-white to-transparent z-10"></div>
+              <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-white to-transparent z-10"></div>
               <Marquee className="py-4" pauseOnHover={true}>
                 {reviews.map((review) => (
                   <div key={review.id} className="bg-white rounded-lg shadow-md p-6 m-2 w-64 flex flex-col">

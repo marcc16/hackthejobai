@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { ChatOpenAI } from "@langchain/openai";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
@@ -10,27 +9,23 @@ import { createHistoryAwareRetriever } from "langchain/chains/history_aware_retr
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import pineconeClient from "./pinecone";
 import { PineconeStore } from "@langchain/pinecone";
-//import { PineconeConflictError } from "@pinecone-database/pinecone/dist/errors";
 import { Index, RecordMetadata } from "@pinecone-database/pinecone";
 import { adminDb } from "../firebaseAdmin";
 import { auth } from "@clerk/nextjs/server";
 
-// Initialize the OpenAI model with API key and model name
 const model = new ChatOpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  modelName: "gpt-4o",
+  modelName: "gpt-4",
+  temperature: 0.7,
 });
 
 export const indexName = "hackthejobai";
 
-async function fetchMessagesFromDB(docId: string) {
+async function fetchMessagesFromDB(docId: string): Promise<(HumanMessage | AIMessage)[]> {
   const { userId } = await auth();
-  if (!userId) {
-    throw new Error("User not found");
-  }
+  if (!userId) throw new Error("Usuario no encontrado");
 
-  console.log("--- Fetching chat history from the firestore database... ---");
-  // Get the last 6 messages from the chat history
+  console.log("--- Obteniendo historial de chat de la base de datos Firestore... ---");
   const chats = await adminDb
     .collection(`users`)
     .doc(userId)
@@ -38,31 +33,24 @@ async function fetchMessagesFromDB(docId: string) {
     .doc(docId)
     .collection("chat")
     .orderBy("createdAt", "desc")
-    // .limit(LIMIT)
+    .limit(10)
     .get();
 
   const chatHistory = chats.docs.map((doc) =>
     doc.data().role === "human"
       ? new HumanMessage(doc.data().message)
       : new AIMessage(doc.data().message)
-  );
+  ).reverse();
 
-  console.log(
-    `--- fetched last ${chatHistory.length} messages successfully ---`
-  );
-  console.log(chatHistory.map((msg) => msg.content.toString()));
-
+  console.log(`--- Se obtuvieron los últimos ${chatHistory.length} mensajes con éxito ---`);
   return chatHistory;
 }
 
-export async function generateDocs(docId: string) {
+async function generateDocs(docId: string) {
   const { userId } = await auth();
+  if (!userId) throw new Error("Usuario no encontrado");
 
-  if (!userId) {
-    throw new Error("User not found");
-  }
-
-  console.log("--- Fetching the download URL from Firebase... ---");
+  console.log("--- Obteniendo la URL de descarga de Firebase... ---");
   const firebaseRef = await adminDb
     .collection("users")
     .doc(userId)
@@ -71,166 +59,127 @@ export async function generateDocs(docId: string) {
     .get();
 
   const downloadUrl = firebaseRef.data()?.downloadURL;
+  if (!downloadUrl) throw new Error("URL de descarga no encontrada");
 
-  if (!downloadUrl) {
-    console.log("Download URL: ", downloadUrl);
+  console.log(`--- URL de descarga obtenida con éxito: ${downloadUrl} ---`);
 
-    throw new Error("Download URL not found");
-  }
-
-  console.log(`--- Download URL fetched successfully: ${downloadUrl} ---`);
-
-  // Fetch the PDF from the specified URL
   const response = await fetch(downloadUrl);
-
-  // Load the PDF into a PDFDocument object
   const data = await response.blob();
 
-  // Load the PDF document from the specified path
-  console.log("--- Loading PDF document... ---");
+  console.log("--- Cargando documento PDF... ---");
   const loader = new PDFLoader(data);
   const docs = await loader.load();
 
-  // Split the loaded document into smaller parts for easier processing
-  console.log("--- Splitting the document into smaller parts... ---");
+  console.log("--- Dividiendo el documento en partes más pequeñas... ---");
   const splitter = new RecursiveCharacterTextSplitter();
-
   const splitDocs = await splitter.splitDocuments(docs);
-  console.log(`--- Split into ${splitDocs.length} parts ---`);
+  console.log(`--- Dividido en ${splitDocs.length} partes ---`);
 
   return splitDocs;
 }
 
-async function namespaceExists(
-  index: Index<RecordMetadata>,
-  namespace: string
-) {
-  if (namespace === null) throw new Error("No namespace value provided.");
+async function namespaceExists(index: Index<RecordMetadata>, namespace: string): Promise<boolean> {
+  if (!namespace) throw new Error("No se proporcionó valor de namespace.");
   const { namespaces } = await index.describeIndexStats();
   return namespaces?.[namespace] !== undefined;
 }
 
 export async function generateEmbeddingsInPineconeVectorStore(docId: string) {
   const { userId } = await auth();
+  if (!userId) throw new Error("Usuario no encontrado");
 
-  if (!userId) {
-    throw new Error("User not found");
-  }
-
-  let pineconeVectorStore;
-
-  // Generate embeddings (numerical representations) for the split documents
-  console.log("--- Generating embeddings... ---");
+  console.log("--- Generando embeddings... ---");
   const embeddings = new OpenAIEmbeddings();
 
   const index = await pineconeClient.index(indexName);
   const namespaceAlreadyExists = await namespaceExists(index, docId);
 
   if (namespaceAlreadyExists) {
-    console.log(
-      `--- Namespace ${docId} already exists, reusing existing embeddings... ---`
-    );
-
-    pineconeVectorStore = await PineconeStore.fromExistingIndex(embeddings, {
+    console.log(`--- El namespace ${docId} ya existe, reutilizando embeddings existentes... ---`);
+    return await PineconeStore.fromExistingIndex(embeddings, {
       pineconeIndex: index,
       namespace: docId,
     });
-
-    return pineconeVectorStore;
   } else {
-    // If the namespace does not exist, download the PDF from firestore via the stored Download URL & generate the embeddings and store them in the Pinecone vector store
     const splitDocs = await generateDocs(docId);
-
-    console.log(
-      `--- Storing the embeddings in namespace ${docId} in the ${indexName} Pinecone vector store... ---`
-    );
-
-    pineconeVectorStore = await PineconeStore.fromDocuments(
-      splitDocs,
-      embeddings,
-      {
-        pineconeIndex: index,
-        namespace: docId,
-      }
-    );
-
-    return pineconeVectorStore;
+    console.log(`--- Almacenando los embeddings en el namespace ${docId} en el almacén de vectores Pinecone ${indexName}... ---`);
+    return await PineconeStore.fromDocuments(splitDocs, embeddings, {
+      pineconeIndex: index,
+      namespace: docId,
+    });
   }
 }
 
-const generateLangchainCompletion = async (docId: string, question: string) => {
-    let pineconeVectorStore;
-  
-    // eslint-disable-next-line prefer-const
-    pineconeVectorStore = await generateEmbeddingsInPineconeVectorStore(docId);
-    if (!pineconeVectorStore) {
-      throw new Error("Pinecone vector store not found");
-    }
-  
-    // Create a retriever to search through the vector store
-    console.log("--- Creating a retriever... ---");
-    const retriever = pineconeVectorStore.asRetriever();
-  
-    // Fetch the chat history from the database
-    const chatHistory = await fetchMessagesFromDB(docId);
-  
-    // Define a prompt template for generating search queries based on conversation history
-    console.log("--- Defining a prompt template... ---");
-    const historyAwarePrompt = ChatPromptTemplate.fromMessages([
-      ...chatHistory, // Insert the actual chat history here
-  
-      ["user", "{input}"],
-      [
-        "user",
-        "Given the above conversation, generate a search query to look up in order to get information relevant to the conversation",
-      ],
-    ]);
-  
-    // Create a history-aware retriever chain that uses the model, retriever, and prompt
-    console.log("--- Creating a history-aware retriever chain... ---");
-    const historyAwareRetrieverChain = await createHistoryAwareRetriever({
-      llm: model,
-      retriever,
-      rephrasePrompt: historyAwarePrompt,
-    });
-  
-    // Define a prompt template for answering questions based on retrieved context
-    console.log("--- Defining a prompt template for answering questions... ---");
-    const historyAwareRetrievalPrompt = ChatPromptTemplate.fromMessages([
-      [
-        "system",
-        "Answer the user's questions based on the below context:\n\n{context}",
-      ],
-  
-      ...chatHistory, // Insert the actual chat history here
-  
-      ["user", "{input}"],
-    ]);
-  
-    // Create a chain to combine the retrieved documents into a coherent response
-    console.log("--- Creating a document combining chain... ---");
-    const historyAwareCombineDocsChain = await createStuffDocumentsChain({
-      llm: model,
-      prompt: historyAwareRetrievalPrompt,
-    });
-  
-    // Create the main retrieval chain that combines the history-aware retriever and document combining chains
-    console.log("--- Creating the main retrieval chain... ---");
-    const conversationalRetrievalChain = await createRetrievalChain({
-      retriever: historyAwareRetrieverChain,
-      combineDocsChain: historyAwareCombineDocsChain,
-    });
-  
-    console.log("--- Running the chain with a sample conversation... ---");
-    const reply = await conversationalRetrievalChain.invoke({
-      chat_history: chatHistory,
-      input: question,
-    });
-  
-    // Print the result to the console
-    console.log(reply.answer);
-    return reply.answer;
-  };
-  
-  // Export the model and the run function
-  export { model, generateLangchainCompletion };
+export async function generateLangchainCompletion(
+  docId: string,
+  question: string,
+  companyName: string,
+  jobPosition: string
+): Promise<string> {
+  const pineconeVectorStore = await generateEmbeddingsInPineconeVectorStore(docId);
+  if (!pineconeVectorStore) throw new Error("Almacén de vectores Pinecone no encontrado");
+
+  console.log("--- Creando un recuperador... ---");
+  const retriever = pineconeVectorStore.asRetriever();
+
+  const chatHistory = await fetchMessagesFromDB(docId);
+
+  console.log("--- Definiendo una plantilla de prompt... ---");
+  const historyAwarePrompt = ChatPromptTemplate.fromMessages([
+    ["system", `Eres un asistente de IA conduciendo una entrevista de trabajo para ${companyName}, para el puesto de ${jobPosition}. 
+    Tu objetivo es hacer preguntas relevantes y proporcionar retroalimentación perspicaz basada en el CV del candidato y sus respuestas. 
+    Utiliza el contexto proporcionado para adaptar tus respuestas a la empresa y el puesto específicos.`],
+    ...chatHistory,
+    ["human", "{input}"],
+    ["human", "Basándote en la conversación anterior y el contexto de esta entrevista de trabajo, genera una consulta de búsqueda para encontrar información relevante del CV del candidato."],
+  ]);
+
+  console.log("--- Creando una cadena de recuperación consciente del historial... ---");
+  const historyAwareRetrieverChain = await createHistoryAwareRetriever({
+    llm: model,
+    retriever,
+    rephrasePrompt: historyAwarePrompt,
+  });
+
+  console.log("--- Definiendo una plantilla de prompt para responder preguntas... ---");
+  const interviewPrompt = ChatPromptTemplate.fromMessages([
+    ["system", `Eres un entrevistador de IA para ${companyName}, entrevistando a un candidato para el puesto de ${jobPosition}. 
+    Utiliza el siguiente contexto del CV del candidato y las respuestas previas para proporcionar una respuesta detallada y profesional. 
+    Tu objetivo es evaluar la idoneidad del candidato para el puesto y proporcionar retroalimentación constructiva.
+
+    Directrices:
+    1. Sé profesional y cortés en todo momento.
+    2. Haz preguntas de seguimiento cuando sea apropiado para profundizar en la experiencia del candidato.
+    3. Proporciona retroalimentación específica relacionada con el puesto de ${jobPosition} en ${companyName}.
+    4. Si la respuesta del candidato es vaga o insuficiente, pide más detalles o ejemplos.
+    5. Destaca fortalezas y áreas de mejora basadas en los requisitos del puesto de ${jobPosition}.
+    6. Mantén un tono conversacional mientras mantienes la entrevista enfocada y productiva.
+
+    Contexto del CV y respuestas previas: {context}`],
+    ...chatHistory,
+    ["human", "{input}"],
+  ]);
+
+  console.log("--- Creando una cadena de combinación de documentos... ---");
+  const combineDocsChain = await createStuffDocumentsChain({
+    llm: model,
+    prompt: interviewPrompt,
+  });
+
+  console.log("--- Creando la cadena principal de recuperación... ---");
+  const conversationalRetrievalChain = await createRetrievalChain({
+    retriever: historyAwareRetrieverChain,
+    combineDocsChain,
+  });
+
+  console.log("--- Ejecutando la cadena con la conversación de muestra... ---");
+  const response = await conversationalRetrievalChain.invoke({
+    chat_history: chatHistory,
+    input: question,
+  });
+
+  console.log("Respuesta de la IA:", response.answer);
+  return response.answer;
+}
+
+export { model };

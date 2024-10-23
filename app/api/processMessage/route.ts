@@ -1,12 +1,8 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getDoc, doc } from 'firebase/firestore';
 import { auth } from '@clerk/nextjs/server';
-import OpenAI from 'openai';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+import { askQuestion } from '@/actions/askQuestion';
 
 export async function POST(req: Request) {
   try {
@@ -21,26 +17,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid message or docId' }, { status: 400 });
     }
 
-    // Generar respuesta de la IA
-    const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [
-        { role: "system", content: "You are a helpful assistant conducting a job interview." },
-        { role: "user", content: message }
-      ],
-    });
+    // Obtener información de la empresa y el puesto de trabajo
+    const fileRef = doc(db, 'users', userId, 'files', docId);
+    const fileDoc = await getDoc(fileRef);
+    const { companyName, jobPosition } = fileDoc.data() || {};
 
-    const aiReply = completion.choices[0].message.content;
+    if (!companyName || !jobPosition) {
+      return NextResponse.json({ error: 'Company or job information not found' }, { status: 400 });
+    }
 
-    // Guardar la respuesta de la IA en Firestore
-    const chatRef = collection(db, 'users', userId, 'files', docId, 'chat');
-    await addDoc(chatRef, {
-      message: aiReply,
-      role: 'ai',
-      createdAt: serverTimestamp(),
-    });
+    // Generar respuesta de la IA usando askQuestion
+    const response = await askQuestion(docId, message, companyName, jobPosition);
 
-    return NextResponse.json({ reply: aiReply });
+    if (!response.success) {
+      return NextResponse.json({ error: response.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ reply: response.message });
   } catch (error) {
     console.error('Error processing message:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

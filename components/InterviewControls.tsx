@@ -86,13 +86,13 @@ const InterviewControls: React.FC<InterviewControlsProps> = ({
       const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
       const formData = new FormData();
       formData.append('audio', audioBlob, 'recording.webm');
-
+  
       try {
         const transcribeResponse = await fetch('/api/transcribe', {
           method: 'POST',
           body: formData,
         });
-
+  
         if (!transcribeResponse.ok) {
           const errorData = await transcribeResponse.json();
           throw new Error(errorData.error || 'Transcription failed');
@@ -100,30 +100,27 @@ const InterviewControls: React.FC<InterviewControlsProps> = ({
         
         const transcribeData = await transcribeResponse.json();
         setTranscription(transcribeData.text);
-
+  
         // Guardar la transcripción del usuario en Firestore
         await addDoc(collection(db, 'users', user.id, 'files', id, 'chat'), {
           message: transcribeData.text,
           createdAt: serverTimestamp(),
           role: 'user'
         });
-
+  
         const processResponse = await fetch('/api/processMessage', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: transcribeData.text, docId: id }),
         });
-
+  
         if (!processResponse.ok) {
           const errorData = await processResponse.json();
           throw new Error(errorData.error || 'AI processing failed');
         }
         
         const processData = await processResponse.json();
-
-        // Guardar la respuesta de la IA en Firestore
-        
-
+  
         console.log('Transcription:', transcribeData.text);
         console.log('AI Response:', processData.reply);
         toast.success('Recording processed successfully');
