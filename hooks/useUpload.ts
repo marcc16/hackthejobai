@@ -11,7 +11,8 @@ export enum StatusText {
   UPLOADING = "Subiendo el archivo",
   UPLOADED = "Archivo subido",
   SAVING = "Guardando información",
-  GENERATING = "Generando embeddings",
+  GENERATING = "Entrenando a la IA",
+  COMPLETED = "Proceso completado"
 }
 
 export type Status = StatusText[keyof StatusText];
@@ -65,9 +66,20 @@ function useUpload() {
 
   const generateEmbeddings = async (fileId: string) => {
     setStatus(StatusText.GENERATING);
-    setProgress(0);
+    let currentProgress = progress;
+    
+    const totalSteps = 10;
+    for (let step = 1; step <= totalSteps; step++) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      currentProgress = Math.max(currentProgress, Math.round((step / totalSteps) * 100));
+      setProgress(currentProgress);
+    }
+
     await generateEmbeddingsAction(fileId);
+    setStatus(StatusText.COMPLETED);
     setProgress(100);
+
+    return fileId;
   };
 
   return { progress, status, handleUpload, generateEmbeddings };

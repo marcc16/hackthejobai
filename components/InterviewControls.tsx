@@ -12,8 +12,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/firebase';
 import { useUser } from '@clerk/nextjs';
 
 interface InterviewControlsProps {
@@ -23,19 +21,19 @@ interface InterviewControlsProps {
   setIsInterviewStarted: React.Dispatch<React.SetStateAction<boolean>>;
   timeRemaining: number;
   setTimeRemaining: React.Dispatch<React.SetStateAction<number>>;
-  setTranscription: React.Dispatch<React.SetStateAction<string | null>>;
+  addTranscription: (text: string) => void;
   endInterview: () => Promise<void>;
 }
 
 const InterviewControls: React.FC<InterviewControlsProps> = ({
-  id,
-  isCompleted,
-  isInterviewStarted,
-  setIsInterviewStarted,
-  timeRemaining,
-  setTranscription,
-  endInterview
-}) => {
+    id,
+    isCompleted,
+    isInterviewStarted,
+    setIsInterviewStarted,
+    timeRemaining,
+    addTranscription,
+    endInterview
+  }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -88,6 +86,7 @@ const InterviewControls: React.FC<InterviewControlsProps> = ({
       formData.append('audio', audioBlob, 'recording.webm');
   
       try {
+        // Paso 1: Transcribir el audio
         const transcribeResponse = await fetch('/api/transcribe', {
           method: 'POST',
           body: formData,
@@ -99,30 +98,26 @@ const InterviewControls: React.FC<InterviewControlsProps> = ({
         }
         
         const transcribeData = await transcribeResponse.json();
-        setTranscription(transcribeData.text);
-  
-        // Guardar la transcripción del usuario en Firestore
-        await addDoc(collection(db, 'users', user.id, 'files', id, 'chat'), {
-          message: transcribeData.text,
-          createdAt: serverTimestamp(),
-          role: 'user'
-        });
-  
+        console.log('Transcripción:', transcribeData.text);
+
+        // Añadir la transcripción localmente
+        addTranscription(transcribeData.text);
+
+        // Paso 2: Procesar el mensaje con la IA
         const processResponse = await fetch('/api/processMessage', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: transcribeData.text, docId: id }),
         });
-  
+        
         if (!processResponse.ok) {
           const errorData = await processResponse.json();
           throw new Error(errorData.error || 'AI processing failed');
         }
         
         const processData = await processResponse.json();
-  
-        console.log('Transcription:', transcribeData.text);
-        console.log('AI Response:', processData.reply);
+        
+        console.log('Respuesta del candidato (IA):', processData.reply);
         toast.success('Recording processed successfully');
       } catch (error) {
         console.error('Error processing recording:', error);
@@ -196,6 +191,5 @@ const InterviewControls: React.FC<InterviewControlsProps> = ({
     </div>
   );
 };
-
 
 export default InterviewControls;

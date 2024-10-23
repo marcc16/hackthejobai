@@ -15,7 +15,7 @@ import { auth } from "@clerk/nextjs/server";
 
 const model = new ChatOpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  modelName: "gpt-4",
+  modelName: "gpt-4o-mini",
   temperature: 0.7,
 });
 
@@ -125,45 +125,35 @@ export async function generateLangchainCompletion(
   const chatHistory = await fetchMessagesFromDB(docId);
 
   console.log("--- Definiendo una plantilla de prompt... ---");
-  const historyAwarePrompt = ChatPromptTemplate.fromMessages([
-    ["system", `Eres un asistente de IA conduciendo una entrevista de trabajo para ${companyName}, para el puesto de ${jobPosition}. 
-    Tu objetivo es hacer preguntas relevantes y proporcionar retroalimentación perspicaz basada en el CV del candidato y sus respuestas. 
-    Utiliza el contexto proporcionado para adaptar tus respuestas a la empresa y el puesto específicos.`],
+  const candidatePrompt = ChatPromptTemplate.fromMessages([
+    ["system", `Eres un candidato para el puesto de ${jobPosition} en ${companyName}. 
+    Responde a las preguntas de la entrevista de manera profesional y entusiasta. 
+    Usa la información de tu CV y experiencia previa para proporcionar respuestas detalladas y convincentes.
+    Asegúrate de que tu respuesta sea:
+    1. Concisa y directa, sin perder información importante.
+    2. Profesional y positiva.
+    3. Relevante para la pregunta y el puesto de ${jobPosition} en ${companyName}.
+    4. Estructurada de manera clara y fácil de seguir.
+    5. Enfocada en destacar tus fortalezas y logros más relevantes para el puesto.
+    Habla en primera persona y mantén un tono conversacional pero profesional.
+
+    Contexto del CV: {context}`],
     ...chatHistory,
-    ["human", "{input}"],
-    ["human", "Basándote en la conversación anterior y el contexto de esta entrevista de trabajo, genera una consulta de búsqueda para encontrar información relevante del CV del candidato."],
+    ["human", "El entrevistador pregunta: {input}"],
+    ["human", "Basándote en tu CV y experiencia, responde a la pregunta del entrevistador:"],
   ]);
 
   console.log("--- Creando una cadena de recuperación consciente del historial... ---");
   const historyAwareRetrieverChain = await createHistoryAwareRetriever({
     llm: model,
     retriever,
-    rephrasePrompt: historyAwarePrompt,
+    rephrasePrompt: candidatePrompt,
   });
-
-  console.log("--- Definiendo una plantilla de prompt para responder preguntas... ---");
-  const interviewPrompt = ChatPromptTemplate.fromMessages([
-    ["system", `Eres un entrevistador de IA para ${companyName}, entrevistando a un candidato para el puesto de ${jobPosition}. 
-    Utiliza el siguiente contexto del CV del candidato y las respuestas previas para proporcionar una respuesta detallada y profesional. 
-    Tu objetivo es evaluar la idoneidad del candidato para el puesto y proporcionar retroalimentación constructiva.
-
-    Directrices:
-    1. Sé profesional y cortés en todo momento.
-    2. Haz preguntas de seguimiento cuando sea apropiado para profundizar en la experiencia del candidato.
-    3. Proporciona retroalimentación específica relacionada con el puesto de ${jobPosition} en ${companyName}.
-    4. Si la respuesta del candidato es vaga o insuficiente, pide más detalles o ejemplos.
-    5. Destaca fortalezas y áreas de mejora basadas en los requisitos del puesto de ${jobPosition}.
-    6. Mantén un tono conversacional mientras mantienes la entrevista enfocada y productiva.
-
-    Contexto del CV y respuestas previas: {context}`],
-    ...chatHistory,
-    ["human", "{input}"],
-  ]);
 
   console.log("--- Creando una cadena de combinación de documentos... ---");
   const combineDocsChain = await createStuffDocumentsChain({
     llm: model,
-    prompt: interviewPrompt,
+    prompt: candidatePrompt,
   });
 
   console.log("--- Creando la cadena principal de recuperación... ---");
@@ -173,12 +163,16 @@ export async function generateLangchainCompletion(
   });
 
   console.log("--- Ejecutando la cadena con la conversación de muestra... ---");
+  const documents = await retriever.getRelevantDocuments(question);
+  const context = documents.map(doc => doc.pageContent).join("\n\n");
+
   const response = await conversationalRetrievalChain.invoke({
     chat_history: chatHistory,
     input: question,
+    context: context,
   });
 
-  console.log("Respuesta de la IA:", response.answer);
+  console.log("Respuesta del candidato (IA):", response.answer);
   return response.answer;
 }
 

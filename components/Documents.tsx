@@ -19,11 +19,10 @@ async function Documents() {
     .get();
 
   return (
-    <div className="flex flex-wrap p-5 bg-gray-100 justify-center lg:justify-start rounded-sm gap-5 max-w-7xl mx-auto">
-      <PlaceholderDocument /> 
-      {/* Map through the documents */}
+    <div className="flex flex-wrap justify-center gap-6">
+      <PlaceholderDocument />
       {documentsSnapshot.docs.map((doc) => {
-        const { name, downloadUrl, size } = doc.data();
+        const { name, downloadUrl, size, jobPosition, companyName } = doc.data();
 
         return (
           <Document
@@ -32,12 +31,13 @@ async function Documents() {
             name={name}
             size={size}
             downloadUrl={downloadUrl}
+            jobPosition={jobPosition}
+            companyName={companyName}
           />
         );
       })}
-
-      
     </div>
   );
 }
+
 export default Documents;

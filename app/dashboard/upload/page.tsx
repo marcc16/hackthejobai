@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import FileUploader from '@/components/FileUploader';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { db } from '@/firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { useUser } from '@clerk/nextjs';
-import useUpload from '@/hooks/useUpload';
+import useUpload, { StatusText } from '@/hooks/useUpload';
 import AnimatedCircularProgressBar from '@/components/ui/animated-circular-progress-bar';
 
 const jobPositions = [
@@ -29,7 +29,7 @@ function UploadPage() {
   const router = useRouter();
   const { progress, status, handleUpload, generateEmbeddings } = useUpload();
 
-  const handleFileUploaded = (file: File) => {
+  const handleFileUploaded = (file: File | null) => {
     setUploadedFile(file);
   };
 
@@ -54,13 +54,12 @@ function UploadPage() {
           status: 'pending'
         }, { merge: true });
 
-        await generateEmbeddings(uploadedFileId);
-        router.push(`/dashboard/files/${uploadedFileId}`);
+        const finalFileId = await generateEmbeddings(uploadedFileId);
+        router.push(`/dashboard/files/${finalFileId}`);
       }
     } catch (error) {
       console.error('Error processing file:', error);
       alert('An error occurred while processing the file');
-    } finally {
       setIsProcessing(false);
     }
   };
@@ -70,7 +69,7 @@ function UploadPage() {
       <div className="flex flex-col items-center justify-center h-screen">
         <AnimatedCircularProgressBar
           max={100}
-          value={progress || 0}
+          value={progress}
           min={0}
           gaugePrimaryColor="#4F46E5"
           gaugeSecondaryColor="#E0E7FF"
@@ -105,10 +104,6 @@ function UploadPage() {
       </Select>
 
       <FileUploader onFileUploaded={handleFileUploaded} />
-
-      {uploadedFile && (
-        <p>Uploaded file: {uploadedFile.name}</p>
-      )}
 
       <div className="flex justify-between mt-6">
         <Button variant="outline" onClick={handleCancel}>Cancel</Button>
