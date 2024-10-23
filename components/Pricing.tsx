@@ -6,7 +6,7 @@ import { CheckIcon } from "lucide-react";
 function PricingPage() {
   return (
     <div>
-      <div className="bg-gray-50 py-24 sm:py-32">
+      <div className="bg-white py-24 sm:py-32">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-base font-semibold leading-7 text-blue-600">
             Precios

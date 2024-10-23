@@ -16,7 +16,7 @@ import Marquee from "@/components/ui/marquee";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import AnimatedNumberTicker from '@/components/AnimatedNumberTicket';
-import PricingPage from "@/components/Pricing";
+
 
 const features = [
   {
@@ -162,7 +162,7 @@ export default function Home() {
         </section>
 
         {/* Features Section */}
-        <section className="bg-gray-50 py-16">
+        <section className="bg-white py-16">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <h2 className="text-3xl font-bold text-center mb-12 text-gray-900">Características principales</h2>
             <dl className="grid grid-cols-1 gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 lg:gap-x-8">
@@ -207,7 +207,7 @@ export default function Home() {
         </section>
 
         {/* Reviews Section */}
-        <section className="bg-gray-50 py-16">
+        <section className="bg-white py-16">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <h2 className="text-3xl font-bold text-center mb-12 text-gray-900">Lo que dicen nuestros usuarios</h2>
             <div className="relative">
@@ -232,7 +232,7 @@ export default function Home() {
         </section>
 
         {/* CTA Section */}
-        <section className="bg-gray-50 py-16">
+        <section className="bg-white py-16">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
             <Button asChild size="lg">
               <Link href="/dashboard">Prueba co-pilot y supera tu próxima entrevista</Link>
@@ -256,7 +256,7 @@ export default function Home() {
         </section>
 
         {/* Pricing Section */}
-        <PricingPage />
+        
       </div>
     </main>
   );
