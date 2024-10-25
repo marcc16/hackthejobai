@@ -18,8 +18,7 @@ interface DocumentProps {
 function Document({
   id,
   name,
-  size,
-  downloadUrl,
+  
   jobPosition,
   companyName,
 }: DocumentProps) {

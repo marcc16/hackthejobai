@@ -21,7 +21,7 @@ const ChatView: React.FC<ExtendedChatProps> = ({
   isCompleted, 
   isGenerating,
   messages: cachedMessages = [], // Mensajes en caché desde el padre
-  addMessage // Función para añadir mensajes desde el padre
+  // Función para añadir mensajes desde el padre
 }) => {
   const { user } = useUser();
   const [storedMessages, setStoredMessages] = useState<Message[]>([]);

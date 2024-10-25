@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import FileUploader from '@/components/FileUploader';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { db } from '@/firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { useUser } from '@clerk/nextjs';
-import useUpload, { StatusText } from '@/hooks/useUpload';
+import useUpload from '@/hooks/useUpload';
 import AnimatedCircularProgressBar from '@/components/ui/animated-circular-progress-bar';
 
 const jobPositions = [
