@@ -2,6 +2,7 @@ import { adminDb } from "@/firebaseAdmin";
 import PlaceholderDocument from "./PlaceholderDocument";
 import { auth } from "@clerk/nextjs/server";
 import Document from "./Document";
+import type { JobPosition } from "@/lib/jobImages";
 
 async function Documents() {
   auth().protect();
@@ -19,8 +20,8 @@ async function Documents() {
     .get();
 
   return (
-    <div className="flex flex-wrap justify-center gap-6">
-      <PlaceholderDocument />
+    <div className="flex flex-wrap p-5 bg-white justify-center lg:justify-start rounded-sm gap-5 max-w-7xl mx-auto">
+      <PlaceholderDocument /> 
       {documentsSnapshot.docs.map((doc) => {
         const { name, downloadUrl, size, jobPosition, companyName } = doc.data();
 
@@ -31,7 +32,7 @@ async function Documents() {
             name={name}
             size={size}
             downloadUrl={downloadUrl}
-            jobPosition={jobPosition}
+            jobPosition={jobPosition as JobPosition}
             companyName={companyName}
           />
         );

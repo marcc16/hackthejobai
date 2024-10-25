@@ -9,8 +9,7 @@ import { v4 as uuidv4 } from "uuid";
 
 export enum StatusText {
   UPLOADING = "Subiendo el archivo",
-  UPLOADED = "Archivo subido",
-  SAVING = "Guardando información",
+  PROCESSING = "Procesando el archivo",
   GENERATING = "Entrenando a la IA",
   COMPLETED = "Proceso completado"
 }
@@ -38,17 +37,18 @@ function useUpload() {
             (snapshot.bytesTransferred / snapshot.totalBytes) * 100
           );
           setStatus(StatusText.UPLOADING);
-          setProgress(percent);
+          setProgress(percent * 0.5); // File upload is 50% of the total progress
         },
         (error) => {
           console.error("Error uploading file:", error);
           reject(error);
         },
         async () => {
-          setStatus(StatusText.UPLOADED);
+          setStatus(StatusText.PROCESSING);
+          setProgress(55);
           const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
 
-          setStatus(StatusText.SAVING);
+          setProgress(60);
           await setDoc(doc(db, "users", user.id, 'files', fileId), {
             name: file.name,
             size: file.size,
@@ -58,6 +58,7 @@ function useUpload() {
             createdAt: new Date() 
           });
 
+          setProgress(65);
           resolve(fileId);
         }
       );
@@ -66,18 +67,33 @@ function useUpload() {
 
   const generateEmbeddings = async (fileId: string) => {
     setStatus(StatusText.GENERATING);
-    let currentProgress = progress;
-    
-    const totalSteps = 10;
-    for (let step = 1; step <= totalSteps; step++) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      currentProgress = Math.max(currentProgress, Math.round((step / totalSteps) * 100));
-      setProgress(currentProgress);
-    }
+    setProgress(70);
 
-    await generateEmbeddingsAction(fileId);
-    setStatus(StatusText.COMPLETED);
-    setProgress(100);
+    try {
+      // Simulate progress during embedding generation
+      const simulateProgress = setInterval(() => {
+        setProgress((prevProgress) => {
+          if (prevProgress >= 95) {
+            clearInterval(simulateProgress);
+            return prevProgress;
+          }
+          return prevProgress + 1;
+        });
+      }, 1000);
+
+      const response = await generateEmbeddingsAction(fileId);
+      
+      clearInterval(simulateProgress);
+
+      if (response.completed) {
+        setStatus(StatusText.COMPLETED);
+        setProgress(100);
+      }
+    } catch (error) {
+      console.error("Error generating embeddings:", error);
+      setStatus(StatusText.COMPLETED);
+      setProgress(100);
+    }
 
     return fileId;
   };

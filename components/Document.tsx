@@ -1,7 +1,19 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FaBuilding, FaBriefcase, FaFileAlt } from 'react-icons/fa';
+import { FaBuilding, FaBriefcase } from 'react-icons/fa';
+import Image from "next/image";
+import { getRandomJobImage } from "@/lib/jobImages";
+import type { JobPosition } from "@/lib/jobImages";
+
+interface DocumentProps {
+  id: string;
+  name: string;
+  size: number;
+  downloadUrl: string;
+  jobPosition?: JobPosition;
+  companyName?: string;
+}
 
 function Document({
   id,
@@ -10,49 +22,60 @@ function Document({
   downloadUrl,
   jobPosition,
   companyName,
-}: {
-  id: string;
-  name: string;
-  size: number;
-  downloadUrl: string;
-  jobPosition?: string;
-  companyName?: string;
-}) {
+}: DocumentProps) {
   const router = useRouter();
   const handleClick = () => {
     router.push(`/dashboard/files/${id}`);
   };
 
+  const imagePath = jobPosition ? getRandomJobImage(jobPosition) : null;
+
   return (
     <div
       onClick={handleClick}
-      className="flex flex-col w-64 h-80 rounded-xl bg-white drop-shadow-md justify-between p-4 transition-all transform hover:scale-105 hover:bg-blue-500 hover:text-white cursor-pointer group"
+      className="flex flex-col w-64 h-80 rounded-xl bg-white drop-shadow-md overflow-hidden transition-all transform hover:scale-105 cursor-pointer group"
     >
-      <div>
+      {/* Imagen de fondo */}
+      <div className="relative h-40 w-full">
+        {imagePath ? (
+          <Image
+            src={imagePath}
+            alt={jobPosition || "Job position"}
+            fill
+            className="object-cover transition-transform duration-300 group-hover:scale-110"
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-blue-400 to-blue-600" />
+        )}
+        {/* Overlay gradiente */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+      </div>
+
+      {/* Contenido */}
+      <div className="flex flex-col flex-grow p-4 relative">
         {companyName && (
-          <h3 className="font-bold text-lg mb-2 group-hover:text-white truncate">
-            <FaBuilding className="inline mr-2" /> {companyName}
+          <h3 className="font-bold text-lg mb-1 truncate flex items-center">
+            <FaBuilding className="inline mr-2 flex-shrink-0 text-blue-500" />
+            <span>{companyName}</span>
           </h3>
         )}
+        
         {jobPosition && (
-          <p className="text-md text-gray-700 group-hover:text-white flex items-center mb-2">
-            <FaBriefcase className="mr-2 flex-shrink-0" /> 
+          <p className="text-sm text-gray-600 mb-2 flex items-center">
+            <FaBriefcase className="mr-2 flex-shrink-0 text-blue-500" />
             <span className="truncate">{jobPosition}</span>
           </p>
         )}
-      </div>
-      
-      <div className="flex-grow flex items-center justify-center">
-        <FaFileAlt className="text-5xl text-gray-300 group-hover:text-white" />
-      </div>
-      
-      <div>
-        <p className="text-sm text-gray-600 group-hover:text-white truncate mb-1">
-          {name}
-        </p>
-        <p className="text-xs text-gray-400 group-hover:text-white">
-          {new Date().toLocaleDateString()}
-        </p>
+
+        <div className="mt-auto">
+          <p className="text-sm text-gray-600 truncate mb-1">
+            {name}
+          </p>
+          <p className="text-xs text-gray-400">
+            {new Date().toLocaleDateString()}
+          </p>
+        </div>
       </div>
     </div>
   );

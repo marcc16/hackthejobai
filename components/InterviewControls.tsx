@@ -13,6 +13,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useUser } from '@clerk/nextjs';
+import { Message } from '@/types';
 
 interface InterviewControlsProps {
   id: string;
@@ -22,18 +23,24 @@ interface InterviewControlsProps {
   timeRemaining: number;
   setTimeRemaining: React.Dispatch<React.SetStateAction<number>>;
   addTranscription: (text: string) => void;
+  addChatMessage: (message: Message) => void;
   endInterview: () => Promise<void>;
+  setIsTranscribing: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsGenerating: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const InterviewControls: React.FC<InterviewControlsProps> = ({
-    id,
-    isCompleted,
-    isInterviewStarted,
-    setIsInterviewStarted,
-    timeRemaining,
-    addTranscription,
-    endInterview
-  }) => {
+  id,
+  isCompleted,
+  isInterviewStarted,
+  setIsInterviewStarted,
+  timeRemaining,
+  addTranscription,
+  addChatMessage,
+  endInterview,
+  setIsTranscribing,
+  setIsGenerating
+}) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -78,6 +85,7 @@ const InterviewControls: React.FC<InterviewControlsProps> = ({
   
     setIsRecording(false);
     setIsProcessing(true);
+    setIsTranscribing(true);
   
     mediaRecorderRef.current.stop();
     mediaRecorderRef.current.onstop = async () => {
@@ -86,24 +94,26 @@ const InterviewControls: React.FC<InterviewControlsProps> = ({
       formData.append('audio', audioBlob, 'recording.webm');
   
       try {
-        // Paso 1: Transcribir el audio
+        // Primero transcribimos
         const transcribeResponse = await fetch('/api/transcribe', {
           method: 'POST',
           body: formData,
         });
   
         if (!transcribeResponse.ok) {
-          const errorData = await transcribeResponse.json();
-          throw new Error(errorData.error || 'Transcription failed');
+          throw new Error('Transcription failed');
         }
         
         const transcribeData = await transcribeResponse.json();
         console.log('Transcripción:', transcribeData.text);
-
-        // Añadir la transcripción localmente
+  
+        setIsTranscribing(false);
+        setIsGenerating(true);
+        
+        // Añadimos la transcripción
         addTranscription(transcribeData.text);
-
-        // Paso 2: Procesar el mensaje con la IA
+  
+        // Procesamos con la IA
         const processResponse = await fetch('/api/processMessage', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -111,19 +121,29 @@ const InterviewControls: React.FC<InterviewControlsProps> = ({
         });
         
         if (!processResponse.ok) {
-          const errorData = await processResponse.json();
-          throw new Error(errorData.error || 'AI processing failed');
+          throw new Error('AI processing failed');
         }
         
         const processData = await processResponse.json();
         
-        console.log('Respuesta del candidato (IA):', processData.reply);
+        // Solo añadimos el mensaje si no estamos en modo completado
+        if (!isCompleted) {
+          addChatMessage({
+            id: Date.now().toString(),
+            message: processData.reply,
+            createdAt: new Date(),
+            role: 'ai'
+          });
+        }
+        
         toast.success('Recording processed successfully');
       } catch (error) {
         console.error('Error processing recording:', error);
         toast.error(error instanceof Error ? error.message : 'Failed to process recording');
       } finally {
         setIsProcessing(false);
+        setIsTranscribing(false);
+        setIsGenerating(false);
       }
     };
   };
@@ -157,7 +177,9 @@ const InterviewControls: React.FC<InterviewControlsProps> = ({
             <DialogDescription>
               {isInterviewStarted 
                 ? "Are you sure you want to end the interview? This action cannot be undone."
-                : "Are you ready to start the interview? The 20-minute countdown will begin."}
+                : timeRemaining < 20 * 60
+                  ? "Do you want to resume the interview? The remaining time will be used."
+                  : "Are you ready to start the interview? The 20-minute countdown will begin."}
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end space-x-2">

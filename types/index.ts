@@ -1,4 +1,5 @@
 // types.ts
+import { JobPosition } from '@/lib/jobImages';
 
 export interface Message {
   id: string;
@@ -26,4 +27,12 @@ export interface AskQuestionResponse {
   success: boolean;
   message: string | null;
   context?: string | null;
+}
+
+export interface Document {
+  id: string;
+  companyName: string;
+  jobPosition: JobPosition;
+  createdAt: Date;
+  isCompleted: boolean;
 }
