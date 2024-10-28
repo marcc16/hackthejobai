@@ -2,16 +2,15 @@ import { ChatOpenAI } from "@langchain/openai";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { OpenAIEmbeddings } from "@langchain/openai";
-import { createStuffDocumentsChain } from "langchain/chains/combine_documents";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { createRetrievalChain } from "langchain/chains/retrieval";
-import { createHistoryAwareRetriever } from "langchain/chains/history_aware_retriever";
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import pineconeClient from "./pinecone";
 import { PineconeStore } from "@langchain/pinecone";
 import { Index, RecordMetadata } from "@pinecone-database/pinecone";
 import { adminDb } from "../firebaseAdmin";
 import { auth } from "@clerk/nextjs/server";
+import { Document } from "langchain/document";
+import { PromptTemplate } from "@langchain/core/prompts";
 
 const model = new ChatOpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -20,6 +19,29 @@ const model = new ChatOpenAI({
 });
 
 export const indexName = "hackthejobai";
+
+
+async function processCVOnUpload(docs: Document[]): Promise<string> {
+  const cvAnalysisPrompt = PromptTemplate.fromTemplate(`
+    Analiza el siguiente CV y genera un resumen estructurado que incluya:
+    1. Experiencia laboral relevante
+    2. Habilidades principales
+    3. Logros destacados
+    4. Educación
+    5. Proyectos relevantes
+
+    CV: {text}
+
+    Proporciona un resumen conciso pero informativo que pueda usarse como contexto para responder preguntas de entrevista.
+  `);
+
+  const chain = cvAnalysisPrompt.pipe(model);
+  const cvText = docs.map(doc => doc.pageContent).join("\n");
+  
+  const response = await chain.invoke({ text: cvText });
+  // Asegurarnos de que obtenemos un string
+  return typeof response === 'string' ? response : response.content.toString();
+}
 
 async function fetchMessagesFromDB(docId: string): Promise<(HumanMessage | AIMessage)[]> {
   const { userId } = await auth();
@@ -88,26 +110,38 @@ export async function generateEmbeddingsInPineconeVectorStore(docId: string) {
   const { userId } = await auth();
   if (!userId) throw new Error("Usuario no encontrado");
 
-  console.log("--- Generando embeddings... ---");
-  const embeddings = new OpenAIEmbeddings();
+  const splitDocs = await generateDocs(docId);
 
-  const index = await pineconeClient.index(indexName);
-  const namespaceAlreadyExists = await namespaceExists(index, docId);
+  // Inicializar Pinecone
+  const pinecone = pineconeClient;
+  const pineconeIndex = pinecone.Index(indexName);
 
-  if (namespaceAlreadyExists) {
-    console.log(`--- El namespace ${docId} ya existe, reutilizando embeddings existentes... ---`);
-    return await PineconeStore.fromExistingIndex(embeddings, {
-      pineconeIndex: index,
-      namespace: docId,
+  // Verificar si el namespace ya existe
+  const exists = await namespaceExists(pineconeIndex, docId);
+  if (!exists) {
+    console.log("--- Creando embeddings y almacenándolos en Pinecone... ---");
+    const embeddings = new OpenAIEmbeddings({
+      openAIApiKey: process.env.OPENAI_API_KEY,
     });
-  } else {
-    const splitDocs = await generateDocs(docId);
-    console.log(`--- Almacenando los embeddings en el namespace ${docId} en el almacén de vectores Pinecone ${indexName}... ---`);
-    return await PineconeStore.fromDocuments(splitDocs, embeddings, {
-      pineconeIndex: index,
+
+    await PineconeStore.fromDocuments(splitDocs, embeddings, {
+      pineconeIndex,
       namespace: docId,
     });
   }
+  
+  // Generar y guardar el resumen del CV
+  const cvSummary = await processCVOnUpload(splitDocs);
+  await adminDb
+    .collection("users")
+    .doc(userId)
+    .collection("files")
+    .doc(docId)
+    .update({
+      cvSummary: cvSummary,
+    });
+
+  return { completed: true };
 }
 
 export async function generateLangchainCompletion(
@@ -116,64 +150,62 @@ export async function generateLangchainCompletion(
   companyName: string,
   jobPosition: string
 ): Promise<string> {
-  const pineconeVectorStore = await generateEmbeddingsInPineconeVectorStore(docId);
-  if (!pineconeVectorStore) throw new Error("Almacén de vectores Pinecone no encontrado");
+  const { userId } = await auth();
+  if (!userId) throw new Error("Usuario no encontrado");
 
-  console.log("--- Creando un recuperador... ---");
-  const retriever = pineconeVectorStore.asRetriever();
+  // Obtener el resumen del CV
+  const docRef = await adminDb
+    .collection("users")
+    .doc(userId)
+    .collection("files")
+    .doc(docId)
+    .get();
+
+  const cvSummary = docRef.data()?.cvSummary;
+  if (!cvSummary) throw new Error("Resumen del CV no encontrado");
 
   const chatHistory = await fetchMessagesFromDB(docId);
 
   console.log("--- Definiendo una plantilla de prompt... ---");
-  const candidatePrompt = ChatPromptTemplate.fromMessages([
+  const prompt = ChatPromptTemplate.fromMessages([
     ["system", `Eres un candidato para el puesto de ${jobPosition} en ${companyName}. 
     Responde a las preguntas de la entrevista de manera profesional y entusiasta. 
-    Usa la información de tu CV y experiencia previa para proporcionar respuestas detalladas y convincentes.
+    Usa la siguiente información de tu CV para proporcionar respuestas detalladas y convincentes:
+
+    ${cvSummary}
+
     Asegúrate de que tu respuesta sea:
     1. Concisa y directa, sin perder información importante.
     2. Profesional y positiva.
     3. Relevante para la pregunta y el puesto de ${jobPosition} en ${companyName}.
     4. Estructurada de manera clara y fácil de seguir.
     5. Enfocada en destacar tus fortalezas y logros más relevantes para el puesto.
-    Habla en primera persona y mantén un tono conversacional pero profesional.
-
-    Contexto del CV: {context}`],
+    Habla en primera persona y mantén un tono conversacional pero profesional.`],
     ...chatHistory,
     ["human", "El entrevistador pregunta: {input}"],
     ["human", "Basándote en tu CV y experiencia, responde a la pregunta del entrevistador:"],
   ]);
 
-  console.log("--- Creando una cadena de recuperación consciente del historial... ---");
-  const historyAwareRetrieverChain = await createHistoryAwareRetriever({
-    llm: model,
-    retriever,
-    rephrasePrompt: candidatePrompt,
-  });
-
-  console.log("--- Creando una cadena de combinación de documentos... ---");
-  const combineDocsChain = await createStuffDocumentsChain({
-    llm: model,
-    prompt: candidatePrompt,
-  });
-
-  console.log("--- Creando la cadena principal de recuperación... ---");
-  const conversationalRetrievalChain = await createRetrievalChain({
-    retriever: historyAwareRetrieverChain,
-    combineDocsChain,
-  });
-
-  console.log("--- Ejecutando la cadena con la conversación de muestra... ---");
-  const documents = await retriever.getRelevantDocuments(question);
-  const context = documents.map(doc => doc.pageContent).join("\n\n");
-
-  const response = await conversationalRetrievalChain.invoke({
-    chat_history: chatHistory,
+    console.log("--- Generando respuesta... ---");
+  const chain = prompt.pipe(model);
+  const response = await chain.invoke({
     input: question,
-    context: context,
   });
 
-  console.log("Respuesta del candidato (IA):", response.answer);
-  return response.answer;
+  // Manejar diferentes tipos de respuesta posibles
+  if (typeof response === 'string') {
+    return response;
+  } else if (typeof response.content === 'string') {
+    return response.content;
+  } else if (Array.isArray(response.content)) {
+    // Si el contenido es un array, lo unimos en un string
+    return response.content.map(item => 
+      typeof item === 'string' ? item : JSON.stringify(item)
+    ).join(' ');
+  }
+
+  // Fallback en caso de que ninguno de los casos anteriores funcione
+  return JSON.stringify(response);
 }
 
 export { model };
