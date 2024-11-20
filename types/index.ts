@@ -36,3 +36,19 @@ export interface Document {
   createdAt: Date;
   isCompleted: boolean;
 }
+
+export interface UserSubscription {
+  stripeCustomerId?: string;
+  availableInterviews: number;
+  totalInterviews: number;
+  completedInterviews: number;
+}
+
+export interface Document {
+  id: string;
+  companyName: string;
+  jobPosition: JobPosition;
+  createdAt: Date;
+  isCompleted: boolean;
+  endedAt?: Date;  // Nueva propiedad para tracking
+}

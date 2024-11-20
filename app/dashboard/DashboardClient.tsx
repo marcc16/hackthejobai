@@ -2,11 +2,23 @@
 
 import DocumentsClient from "@/components/DocumentsClient";
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
 import { PlusCircle } from "lucide-react";
 import DashboardStats from "@/components/DashboardStats";
+import useSubscription from "@/hooks/useSuscription";
+import { useRouter } from "next/navigation";
 
 export default function DashboardClient() {
+  const subscription = useSubscription();
+  const router = useRouter();
+
+  const handleNewInterview = () => {
+    if (!subscription || subscription.availableInterviews === 0) {
+      router.push('/dashboard/upgrade');
+    } else {
+      router.push('/dashboard/upload');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -20,12 +32,21 @@ export default function DashboardClient() {
               Tu asistente de IA para entrevistas técnicas
             </p>
           </div>
-          <Link href="/dashboard/upload">
-            <Button className="bg-blue-600 hover:bg-blue-700 text-white transform transition-transform duration-200 hover:scale-105">
+          <div className="flex items-center gap-4">
+            
+            {subscription?.availableInterviews !== undefined && (
+              <span className="text-sm text-gray-600">
+                {subscription.availableInterviews} entrevistas disponibles
+              </span>
+            )}
+            <Button 
+              onClick={handleNewInterview}
+              className="bg-blue-600 hover:bg-blue-700 text-white transform transition-transform duration-200 hover:scale-105"
+            >
               <PlusCircle className="mr-2 h-4 w-4" />
               Nueva Entrevista
             </Button>
-          </Link>
+          </div>
         </div>
 
         {/* Stats Section */}
